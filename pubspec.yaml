@@ -1,7 +1,7 @@
 name: amap_flutter_plugin
 description: A Flutter plugin for Amap (高德地图) with route planning, POI search, and map display.
 version: 1.0.0
-homepage: https://github.com/example/amap_flutter_plugin
+homepage: https://github.com/FXIANGZYUE/amap_flutter_plugin
 
 environment:
   sdk: ^3.12.0
