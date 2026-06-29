@@ -1,15 +1,18 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:flutter/services.dart';
 
 import 'amap_controller.dart';
+import 'amap_fallback_widget.dart';
+import 'models/amap_latlng.dart';
+import 'models/location_result.dart';
 import 'models/map_marker.dart';
 import 'models/map_track.dart';
 import 'models/map_route.dart';
 
 class AmapWidget extends StatefulWidget {
   final AmapController? controller;
-  final LatLng center;
+  final AmapLatLng center;
   final double zoom;
   final double minZoom;
   final double maxZoom;
@@ -17,19 +20,23 @@ class AmapWidget extends StatefulWidget {
   final List<MapRoute> routes;
   final List<MapMarker> markers;
   final bool showZoomControls;
+  final bool showMyLocation;
+  final LocationResult? currentLocation;
   final PositionCallback? onPositionChanged;
 
   const AmapWidget({
     super.key,
     this.controller,
-    this.center = const LatLng(39.9042, 116.4074),
-    this.zoom = 14.0,
+    this.center = const AmapLatLng(39.9042, 116.4074),
+    this.zoom = 18.0,
     this.minZoom = 3.0,
     this.maxZoom = 20.0,
     this.tracks = const [],
     this.routes = const [],
     this.markers = const [],
     this.showZoomControls = true,
+    this.showMyLocation = false,
+    this.currentLocation,
     this.onPositionChanged,
   });
 
@@ -37,13 +44,120 @@ class AmapWidget extends StatefulWidget {
   State<AmapWidget> createState() => _AmapWidgetState();
 }
 
-class _AmapWidgetState extends State<AmapWidget>
-    with SingleTickerProviderStateMixin {
-  late final MapController _mapController;
-  late final AnimationController _animController;
-  Animation<LatLng>? _positionAnim;
-  Animation<double>? _zoomAnim;
+class _AmapWidgetState extends State<AmapWidget> {
+  static const _channel = MethodChannel('com.example.amap_flutter_plugin');
+  bool _isAmapAvailable = false;
+  bool _checking = true;
+
+  @override
+  void initState() {
+    super.initState();
+    if (kIsWeb) {
+      _isAmapAvailable = false;
+      _checking = false;
+    } else {
+      _checkAmapSdkNative();
+    }
+  }
+
+  Future<void> _checkAmapSdkNative() async {
+    try {
+      final result = await _channel.invokeMethod('isAmapSdkAvailable');
+      if (mounted) {
+        setState(() {
+          _isAmapAvailable = result == true;
+          _checking = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isAmapAvailable = false;
+          _checking = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_checking) {
+      return const SizedBox.shrink();
+    }
+
+    if (!_isAmapAvailable) {
+      return AmapFallbackWidget(
+        controller: widget.controller,
+        center: widget.center,
+        zoom: widget.zoom,
+        minZoom: widget.minZoom,
+        maxZoom: widget.maxZoom,
+        tracks: widget.tracks,
+        routes: widget.routes,
+        markers: widget.markers,
+        showZoomControls: widget.showZoomControls,
+        showMyLocation: widget.showMyLocation,
+        currentLocation: widget.currentLocation,
+        onPositionChanged: widget.onPositionChanged,
+      );
+    }
+
+    return _NativeAmapWidget(
+      controller: widget.controller,
+      center: widget.center,
+      zoom: widget.zoom,
+      minZoom: widget.minZoom,
+      maxZoom: widget.maxZoom,
+      tracks: widget.tracks,
+      routes: widget.routes,
+      markers: widget.markers,
+      showZoomControls: widget.showZoomControls,
+      showMyLocation: widget.showMyLocation,
+      currentLocation: widget.currentLocation,
+      onCameraIdle: widget.onPositionChanged,
+    );
+  }
+}
+
+typedef PositionCallback = void Function(
+    double lat, double lng, double zoom, bool hasGesture);
+
+class _NativeAmapWidget extends StatefulWidget {
+  final AmapController? controller;
+  final AmapLatLng center;
+  final double zoom;
+  final double minZoom;
+  final double maxZoom;
+  final List<MapTrack> tracks;
+  final List<MapRoute> routes;
+  final List<MapMarker> markers;
+  final bool showZoomControls;
+  final bool showMyLocation;
+  final LocationResult? currentLocation;
+  final void Function(double lat, double lng, double zoom, bool hasGesture)? onCameraIdle;
+
+  const _NativeAmapWidget({
+    this.controller,
+    this.center = const AmapLatLng(39.9042, 116.4074),
+    this.zoom = 18.0,
+    this.minZoom = 3.0,
+    this.maxZoom = 20.0,
+    this.tracks = const [],
+    this.routes = const [],
+    this.markers = const [],
+    this.showZoomControls = true,
+    this.showMyLocation = false,
+    this.currentLocation,
+    this.onCameraIdle,
+  });
+
+  @override
+  State<_NativeAmapWidget> createState() => _NativeAmapWidgetState();
+}
+
+class _NativeAmapWidgetState extends State<_NativeAmapWidget> {
   AmapController? _internalController;
+  MethodChannel? _channel;
 
   AmapController get _controller =>
       widget.controller ?? (_internalController ??= AmapController());
@@ -51,27 +165,13 @@ class _AmapWidgetState extends State<AmapWidget>
   @override
   void initState() {
     super.initState();
-    _mapController = MapController();
-    _controller.bindMapController(_mapController);
-
-    _animController = AnimationController(
-      duration: const Duration(milliseconds: 500),
-      vsync: this,
-    )..addListener(_onAnimTick);
-
     if (widget.controller == null) {
-      _setupInternalController();
+      _internalController = AmapController();
     }
   }
 
-  void _setupInternalController() {
-    _internalController = AmapController();
-    _internalController!.bindMapController(_mapController);
-    _internalController!.addListener(_onControllerUpdate);
-  }
-
   @override
-  void didUpdateWidget(AmapWidget oldWidget) {
+  void didUpdateWidget(_NativeAmapWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller?.removeListener(_onControllerUpdate);
@@ -80,79 +180,117 @@ class _AmapWidgetState extends State<AmapWidget>
       _internalController = null;
 
       if (widget.controller != null) {
-        widget.controller!.bindMapController(_mapController);
+        widget.controller!.addListener(_onControllerUpdate);
       } else {
-        _setupInternalController();
+        _internalController = AmapController();
+        _internalController!.addListener(_onControllerUpdate);
       }
     }
+    _updateOverlays();
   }
 
   @override
   void dispose() {
-    _animController.dispose();
+    widget.controller?.removeListener(_onControllerUpdate);
+    _internalController?.removeListener(_onControllerUpdate);
     _internalController?.dispose();
     super.dispose();
   }
 
-  void _onAnimTick() {
-    if (_positionAnim != null && _zoomAnim != null) {
-      _mapController.move(_positionAnim!.value, _zoomAnim!.value);
+  void _onControllerUpdate() {
+    setState(() {});
+  }
+
+  void _onPlatformViewCreated(int id) {
+    _channel = MethodChannel('com.example.amap_flutter_plugin/map_$id');
+    _channel!.setMethodCallHandler(_onMethodCall);
+    _controller.bindChannel(_channel!);
+
+    _channel!.invokeMethod('init', {
+      'lat': widget.center.latitude,
+      'lng': widget.center.longitude,
+      'zoom': widget.zoom,
+    });
+
+    _controller.addListener(_onControllerUpdate);
+    _updateOverlays();
+  }
+
+  Future<dynamic> _onMethodCall(MethodCall call) async {
+    switch (call.method) {
+      case 'onCameraIdle':
+        final lat = call.arguments['lat'] as double;
+        final lng = call.arguments['lng'] as double;
+        final zoom = call.arguments['zoom'] as double;
+        _controller.onCameraIdle(lat, lng, zoom);
+        widget.onCameraIdle?.call(lat, lng, zoom, true);
+        break;
     }
   }
 
-  void _onControllerUpdate() {
-    final c = _controller;
-    _animController.duration = c.animDuration;
-    _positionAnim = LatLngTween(begin: c.animStart, end: c.animEnd).animate(
-      CurvedAnimation(parent: _animController, curve: Curves.easeInOut),
-    );
-    _zoomAnim =
-        Tween<double>(begin: c.animStartZoom, end: c.animEndZoom).animate(
-      CurvedAnimation(parent: _animController, curve: Curves.easeInOut),
-    );
-    _animController.forward(from: 0);
+  void _updateOverlays() {
+    if (_channel == null) return;
+
+    _channel!.invokeMethod('addMarkers', widget.markers.map((m) {
+      return {
+        'lat': m.point.latitude,
+        'lng': m.point.longitude,
+        'title': '',
+      };
+    }).toList());
+
+    _channel!.invokeMethod('addPolylines', [
+      ...widget.routes.map((r) {
+        return {
+          'points': r.points.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList(),
+          'color': r.color.value,
+          'width': r.strokeWidth,
+        };
+      }),
+      ...widget.tracks.map((t) {
+        return {
+          'points': t.points.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList(),
+          'color': t.color.value,
+          'width': t.strokeWidth,
+        };
+      }),
+    ]);
+
+    if (widget.tracks.any((t) => t.showDots)) {
+      final allDots = <Map<String, double>>[];
+      for (final track in widget.tracks) {
+        if (!track.showDots) continue;
+        for (final p in track.points) {
+          allDots.add({'lat': p.latitude, 'lng': p.longitude});
+        }
+      }
+      _channel!.invokeMethod('addTrackDots', {
+        'points': allDots,
+        'color': widget.tracks.first.dotColor?.value ?? widget.tracks.first.color.value,
+        'size': widget.tracks.first.dotSize,
+      });
+    }
+
+    _channel!.invokeMethod('setMyLocationEnabled', {
+      'enabled': widget.showMyLocation && widget.currentLocation != null,
+      'lat': widget.currentLocation?.location.latitude,
+      'lng': widget.currentLocation?.location.longitude,
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        FlutterMap(
-          mapController: _mapController,
-          options: MapOptions(
-            initialCenter: widget.center,
-            initialZoom: widget.zoom,
-            maxZoom: widget.maxZoom,
-            minZoom: widget.minZoom,
-            cameraConstraint: CameraConstraint.containCenter(
-              bounds: LatLngBounds(
-                const LatLng(-85.0, -180.0),
-                const LatLng(85.0, 180.0),
-              ),
-            ),
-            onPositionChanged: (camera, hasGesture) {
-              if (hasGesture) {
-                _controller.updateZoom(camera.zoom);
-              }
-              widget.onPositionChanged?.call(camera, hasGesture);
-            },
-            interactionOptions: const InteractionOptions(
-              flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
-            ),
-          ),
-          children: [
-            TileLayer(
-              urlTemplate:
-                  'http://wprd0{s}.is.autonavi.com/appmaptile?x={x}&y={y}&z={z}&lang=zh_cn&size=1&scl=1&style=7',
-              subdomains: const ['1', '2', '3', '4'],
-              userAgentPackageName: 'com.example.amap_flutter_plugin',
-            ),
-            ..._buildTracks(),
-            ..._buildRoutes(),
-            _buildTrackDots(),
-            _buildRouteDots(),
-            MarkerLayer(markers: _buildMarkers()),
-          ],
+        AndroidView(
+          viewType: 'com.example.amap_flutter_plugin/map',
+          onPlatformViewCreated: _onPlatformViewCreated,
+          creationParams: <String, dynamic>{
+            'lat': widget.center.latitude,
+            'lng': widget.center.longitude,
+            'zoom': widget.zoom,
+          },
+          creationParamsCodec: const StandardMessageCodec(),
         ),
         if (widget.showZoomControls)
           Positioned(
@@ -185,118 +323,5 @@ class _AmapWidgetState extends State<AmapWidget>
           ),
       ],
     );
-  }
-
-  List<PolylineLayer> _buildTracks() {
-    return widget.tracks.map((track) {
-      return PolylineLayer(
-        polylines: [
-          Polyline(
-            points: track.points,
-            color: track.color,
-            strokeWidth: track.strokeWidth,
-          ),
-        ],
-      );
-    }).toList();
-  }
-
-  List<PolylineLayer> _buildRoutes() {
-    return widget.routes.map((route) {
-      return PolylineLayer(
-        polylines: [
-          if (route.showHighlight)
-            Polyline(
-              points: route.points,
-              color: route.highlightColor ?? route.color.withValues(alpha: 0.4),
-              strokeWidth: route.highlightWidth,
-            ),
-          Polyline(
-            points: route.points,
-            color: route.color,
-            strokeWidth: route.strokeWidth,
-          ),
-        ],
-      );
-    }).toList();
-  }
-
-  Widget _buildTrackDots() {
-    final allDots = <Marker>[];
-    for (final track in widget.tracks) {
-      if (!track.showDots) continue;
-      allDots.addAll(
-        track.points.map(
-          (p) => Marker(
-            point: p,
-            width: track.dotSize + 14,
-            height: track.dotSize + 14,
-            child: Icon(
-              Icons.circle,
-              color: track.dotColor ?? track.color,
-              size: track.dotSize,
-            ),
-          ),
-        ),
-      );
-    }
-    if (allDots.isEmpty) return const SizedBox.shrink();
-    return MarkerLayer(markers: allDots);
-  }
-
-  Widget _buildRouteDots() {
-    final allDots = <Marker>[];
-    for (final route in widget.routes) {
-      if (route.points.length < 2) continue;
-      allDots.add(
-        Marker(
-          point: route.points.first,
-          width: 30,
-          height: 50,
-          child: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('起点',
-                  style: TextStyle(
-                      color: Colors.green,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold)),
-              Icon(Icons.location_on, color: Colors.green, size: 24),
-            ],
-          ),
-        ),
-      );
-      allDots.add(
-        Marker(
-          point: route.points.last,
-          width: 30,
-          height: 50,
-          child: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('终点',
-                  style: TextStyle(
-                      color: Colors.red,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold)),
-              Icon(Icons.location_on, color: Colors.red, size: 24),
-            ],
-          ),
-        ),
-      );
-    }
-    if (allDots.isEmpty) return const SizedBox.shrink();
-    return MarkerLayer(markers: allDots);
-  }
-
-  List<Marker> _buildMarkers() {
-    return widget.markers.map((m) {
-      return Marker(
-        point: m.point,
-        width: m.width,
-        height: m.height,
-        child: m.child,
-      );
-    }).toList();
   }
 }

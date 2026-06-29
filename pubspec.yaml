@@ -10,9 +10,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  http: ^1.2.0
   flutter_map: ^8.3.0
   latlong2: ^0.9.1
-  http: ^1.2.0
+  web: ^1.0.0
 
 dev_dependencies:
   flutter_test:
@@ -21,3 +22,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  plugin:
+    platforms:
+      android:
+        package: com.example.amap_flutter_plugin
+        pluginClass: AmapFlutterPlugin

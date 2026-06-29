@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
 
+import 'models/amap_latlng.dart';
 import 'models/map_route.dart';
 import 'models/poi_item.dart';
 
@@ -11,8 +11,8 @@ class AmapRouteService {
   const AmapRouteService({required this.apiKey});
 
   Future<AmapRouteResult?> getDrivingRoute({
-    required LatLng origin,
-    required LatLng destination,
+    required AmapLatLng origin,
+    required AmapLatLng destination,
   }) async {
     final originStr = '${origin.longitude},${origin.latitude}';
     final destStr = '${destination.longitude},${destination.latitude}';
@@ -31,21 +31,22 @@ class AmapRouteService {
     final steps = path['steps'] as List<dynamic>;
     final polyline = steps
         .map<String>(
-            (step) => (step as Map<String, dynamic>)['polyline'] as String)
+          (step) => (step as Map<String, dynamic>)['polyline'] as String,
+        )
         .join(';');
 
-    final points = <LatLng>[];
+    final points = <AmapLatLng>[];
     for (final point in polyline.split(';')) {
       final parts = point.split(',');
-      points.add(LatLng(double.parse(parts[1]), double.parse(parts[0])));
+      points.add(AmapLatLng(double.parse(parts[1]), double.parse(parts[0])));
     }
 
     return AmapRouteResult(points: points, distance: distance);
   }
 
   Future<AmapRouteResult?> getWalkingRoute({
-    required LatLng origin,
-    required LatLng destination,
+    required AmapLatLng origin,
+    required AmapLatLng destination,
   }) async {
     final originStr = '${origin.longitude},${origin.latitude}';
     final destStr = '${destination.longitude},${destination.latitude}';
@@ -64,13 +65,14 @@ class AmapRouteService {
     final steps = path['steps'] as List<dynamic>;
     final polyline = steps
         .map<String>(
-            (step) => (step as Map<String, dynamic>)['polyline'] as String)
+          (step) => (step as Map<String, dynamic>)['polyline'] as String,
+        )
         .join(';');
 
-    final points = <LatLng>[];
+    final points = <AmapLatLng>[];
     for (final point in polyline.split(';')) {
       final parts = point.split(',');
-      points.add(LatLng(double.parse(parts[1]), double.parse(parts[0])));
+      points.add(AmapLatLng(double.parse(parts[1]), double.parse(parts[0])));
     }
 
     return AmapRouteResult(points: points, distance: distance);
@@ -84,7 +86,7 @@ class AmapPoiService {
 
   Future<List<PoiItem>> search({
     required String keywords,
-    LatLng? location,
+    AmapLatLng? location,
     int radius = 3000,
     int pageSize = 20,
   }) async {
@@ -120,7 +122,7 @@ class AmapPoiService {
         id: poi['id'] as String,
         name: poi['name'] as String,
         address: poi['address'] as String? ?? '',
-        location: LatLng(double.parse(loc[1]), double.parse(loc[0])),
+        location: AmapLatLng(double.parse(loc[1]), double.parse(loc[0])),
         type: poi['type'] as String? ?? '',
         tel: telStr,
       );

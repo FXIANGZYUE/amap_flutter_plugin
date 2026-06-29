@@ -1,73 +1,116 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/painting.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:flutter/services.dart';
+
+import 'amap_location_service.dart';
+import 'models/amap_latlng.dart';
+import 'models/location_result.dart';
 
 class AmapController extends ChangeNotifier {
-  MapController? _mapController;
-  double _currentZoom = 14.0;
+  MethodChannel? _channel;
+  AmapLocationService? _locationService;
+  AmapLatLng _center = const AmapLatLng(39.9042, 116.4074);
+  double _zoom = 18.0;
+  LocationResult? _currentLocation;
 
-  Duration _animDuration = const Duration(milliseconds: 500);
-  LatLng _animStart = const LatLng(0, 0);
-  LatLng _animEnd = const LatLng(0, 0);
-  double _animStartZoom = 14.0;
-  double _animEndZoom = 14.0;
+  AmapLatLng get center => _center;
+  double get zoom => _zoom;
+  LocationResult? get currentLocation => _currentLocation;
 
-  void bindMapController(MapController controller) {
-    _mapController = controller;
+  void bindChannel(MethodChannel channel) {
+    _channel = channel;
   }
 
-  MapController? get mapController => _mapController;
-  Duration get animDuration => _animDuration;
-  LatLng get animStart => _animStart;
-  LatLng get animEnd => _animEnd;
-  double get animStartZoom => _animStartZoom;
-  double get animEndZoom => _animEndZoom;
-  double get currentZoom => _currentZoom;
+  void setApiKey(String apiKey) {
+    _locationService?.dispose();
+    _locationService = AmapLocationService(apiKey: apiKey);
+  }
 
-  void animateTo(LatLng target, double targetZoom) {
-    if (_mapController == null) return;
+  Future<LocationResult?> getLocation() async {
+    return _locationService?.getLocation();
+  }
 
-    final startCenter = _mapController!.camera.center;
-    final startZoom = _mapController!.camera.zoom;
-    final latDiff = (target.latitude - startCenter.latitude).abs();
-    final lngDiff = (target.longitude - startCenter.longitude).abs();
-    final zoomDiff = (targetZoom - startZoom).abs();
-    final durationMs =
-        (zoomDiff * 120 + (latDiff + lngDiff) * 2).clamp(300, 2000).toInt();
+  void startLocationStream() {
+    _locationService?.startLocationStream(onLocationUpdate: updateLocation);
+  }
 
-    _animDuration = Duration(milliseconds: durationMs);
-    _animStart = startCenter;
-    _animEnd = target;
-    _animStartZoom = startZoom;
-    _animEndZoom = targetZoom;
+  void stopLocationStream() {
+    _locationService?.stopLocationStream();
+  }
+
+  void updateLocation(LocationResult location) {
+    _currentLocation = location;
     notifyListeners();
   }
 
-  void animateToFitBounds(LatLngBounds bounds,
-      {EdgeInsets padding = const EdgeInsets.all(50)}) {
-    if (_mapController == null) return;
-    final targetCamera =
-        CameraFit.bounds(bounds: bounds, padding: padding).fit(_mapController!.camera);
-    animateTo(targetCamera.center, targetCamera.zoom);
+  void centerOnLocation() {
+    if (_currentLocation != null) {
+      animateTo(_currentLocation!.location, 16.0);
+    }
+  }
+
+  void animateTo(AmapLatLng target, double targetZoom) {
+    _channel?.invokeMethod('moveCamera', {
+      'lat': target.latitude,
+      'lng': target.longitude,
+      'zoom': targetZoom,
+      'animate': true,
+    });
+    _center = target;
+    _zoom = targetZoom;
+    notifyListeners();
+  }
+
+  void animateToFitBounds(List<AmapLatLng> points, {double padding = 50}) {
+    if (points.isEmpty) return;
+    double minLat = points.first.latitude;
+    double maxLat = points.first.latitude;
+    double minLng = points.first.longitude;
+    double maxLng = points.first.longitude;
+    for (final p in points) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    }
+    final centerLat = (minLat + maxLat) / 2;
+    final centerLng = (minLng + maxLng) / 2;
+    final latDiff = maxLat - minLat;
+    final lngDiff = maxLng - minLng;
+    final maxDiff = latDiff > lngDiff ? latDiff : lngDiff;
+    double zoom = (14.0 - (maxDiff * 5)).clamp(3.0, 20.0);
+    animateTo(AmapLatLng(centerLat, centerLng), zoom);
   }
 
   void zoomIn(double minZoom, double maxZoom) {
-    _currentZoom = (_currentZoom + 1).clamp(minZoom, maxZoom);
-    animateTo(_mapController?.camera.center ?? LatLng(0, 0), _currentZoom);
+    _zoom = (_zoom + 1).clamp(minZoom, maxZoom);
+    _channel?.invokeMethod('setZoom', {'zoom': _zoom});
+    notifyListeners();
   }
 
   void zoomOut(double minZoom, double maxZoom) {
-    _currentZoom = (_currentZoom - 1).clamp(minZoom, maxZoom);
-    animateTo(_mapController?.camera.center ?? LatLng(0, 0), _currentZoom);
+    _zoom = (_zoom - 1).clamp(minZoom, maxZoom);
+    _channel?.invokeMethod('setZoom', {'zoom': _zoom});
+    notifyListeners();
   }
 
-  void resetView(LatLng center, double zoom) {
-    _currentZoom = zoom;
+  void resetView(AmapLatLng center, double zoom) {
+    _zoom = zoom;
     animateTo(center, zoom);
   }
 
+  void onCameraIdle(double lat, double lng, double zoom) {
+    _center = AmapLatLng(lat, lng);
+    _zoom = zoom;
+    notifyListeners();
+  }
+
   void updateZoom(double zoom) {
-    _currentZoom = zoom;
+    _zoom = zoom;
+  }
+
+  @override
+  void dispose() {
+    _locationService?.dispose();
+    super.dispose();
   }
 }

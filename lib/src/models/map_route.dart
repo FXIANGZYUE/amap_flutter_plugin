@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:latlong2/latlong.dart';
+import 'amap_latlng.dart';
 
 class MapRoute {
-  final List<LatLng> points;
+  final List<AmapLatLng> points;
   final Color color;
   final double strokeWidth;
   final bool showHighlight;
@@ -20,13 +20,10 @@ class MapRoute {
 }
 
 class AmapRouteResult {
-  final List<LatLng> points;
+  final List<AmapLatLng> points;
   final int distance;
 
-  const AmapRouteResult({
-    required this.points,
-    required this.distance,
-  });
+  const AmapRouteResult({required this.points, required this.distance});
 
   String get distanceText => '${(distance / 1000).toStringAsFixed(1)} km';
 }

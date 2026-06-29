@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:amap_flutter_plugin/amap_flutter_plugin.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 void main() {
@@ -34,6 +35,7 @@ class _MapExamplePageState extends State<MapExamplePage> {
 
   List<MapRoute> _routes = [];
   bool _isLoading = false;
+  LocationResult? _currentLocation;
 
   final _historyTrack = const [
     LatLng(39.9042, 116.4074),
@@ -47,6 +49,36 @@ class _MapExamplePageState extends State<MapExamplePage> {
     LatLng(39.9095, 116.3982),
     LatLng(39.9087, 116.3975),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _amapController.setApiKey(_amapKey);
+    _amapController.addListener(_onLocationUpdate);
+    _getCurrentLocation();
+  }
+
+  @override
+  void dispose() {
+    _amapController.removeListener(_onLocationUpdate);
+    _amapController.dispose();
+    super.dispose();
+  }
+
+  void _onLocationUpdate() {
+    if (mounted) {
+      setState(() {
+        _currentLocation = _amapController.currentLocation;
+      });
+    }
+  }
+
+  Future<void> _getCurrentLocation() async {
+    final result = await _amapController.getLocation();
+    if (result != null && mounted) {
+      _amapController.updateLocation(result);
+    }
+  }
 
   Future<void> _planRoute() async {
     setState(() {
@@ -97,22 +129,79 @@ class _MapExamplePageState extends State<MapExamplePage> {
             ],
             routes: _routes,
             showZoomControls: true,
+            showMyLocation: true,
+            currentLocation: _currentLocation,
           ),
           Positioned(
             left: 16,
             bottom: 100,
-            child: ElevatedButton.icon(
-              onPressed: _isLoading ? null : _planRoute,
-              icon: _isLoading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.directions),
-              label: Text(_isLoading ? '规划中...' : '驾车路线'),
+            child: Column(
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _isLoading ? null : _planRoute,
+                  icon: _isLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.directions),
+                  label: Text(_isLoading ? '规划中...' : '驾车路线'),
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  onPressed: _getCurrentLocation,
+                  icon: const Icon(Icons.my_location),
+                  label: const Text('获取定位'),
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    _amapController.startLocationStream();
+                  },
+                  icon: const Icon(Icons.location_on),
+                  label: const Text('实时追踪'),
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  onPressed: _amapController.stopLocationStream,
+                  icon: const Icon(Icons.location_disabled),
+                  label: const Text('停止追踪'),
+                ),
+              ],
             ),
           ),
+          if (_currentLocation != null)
+            Positioned(
+              left: 16,
+              top: 16,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _currentLocation!.address ?? '未知位置',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    if (_currentLocation!.accuracy != null)
+                      Text(
+                        '精度: ${_currentLocation!.accuracy!.toStringAsFixed(1)}m',
+                        style: const TextStyle(fontSize: 10, color: Colors.grey),
+                      ),
+                    Text(
+                      '定位源: ${_currentLocation!.provider ?? "未知"}',
+                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );

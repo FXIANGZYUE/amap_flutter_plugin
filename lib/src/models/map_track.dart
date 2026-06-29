@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:latlong2/latlong.dart';
+import 'amap_latlng.dart';
 
 class MapTrack {
-  final List<LatLng> points;
+  final List<AmapLatLng> points;
   final Color color;
   final double strokeWidth;
   final bool showDots;

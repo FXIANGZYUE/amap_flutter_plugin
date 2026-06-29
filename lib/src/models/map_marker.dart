@@ -1,8 +1,8 @@
 import 'package:flutter/widgets.dart';
-import 'package:latlong2/latlong.dart';
+import 'amap_latlng.dart';
 
 class MapMarker {
-  final LatLng point;
+  final AmapLatLng point;
   final Widget child;
   final double width;
   final double height;

@@ -1,0 +1,26 @@
+group 'com.example.amap_flutter_plugin'
+version '1.0'
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'com.example.amap_flutter_plugin'
+    compileSdk 34
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    defaultConfig {
+        minSdk 21
+    }
+
+    sourceSets {
+        main.java.srcDirs = ['src/main/java']
+    }
+}
+
+dependencies {
+    implementation 'com.amap.api:3dmap:latest.integration'
+}
